@@ -10,7 +10,7 @@ v1.2 : added a timer to delay influxdb writing in case of failure
        this whill avoid the 100% cpu loop when influx in not responding
        Sebastien Prune THOMAS - prune@lecentre.net
 v1.3 : Add support for influxdb 9.0 and allow the ability to timeout requests
-
+v1.5 : Add tags and dimensions support
 
 #### Dependencies
  * [influxdb](https://github.com/influxdb/influxdb-python)
@@ -30,6 +30,7 @@ time_precision = s
 timeout = 5.0
 influxdb_version = 0.9
 tags = '{"region": "us-east-1","env": "production"}'
+dimensions = '{"cpu": ["cpu_name"], "diskspace": ["device_name"], "iostat": ["device"], "network": ["device"], "softirq": ["irq"] }'
 ```
 """
 
@@ -49,7 +50,7 @@ except ImportError:
     InfluxDB08Client = None
 
 
-class InfluxdbHandler(Handler):
+class InfluxdbHandler(Handler):v1.5 : Add tags and dimensions support
     """
     Sending data to Influxdb using batched format
     """
@@ -78,6 +79,7 @@ class InfluxdbHandler(Handler):
         self.timeout = self.config['timeout']
         self.influxdb_version = self.config['influxdb_version']
         self.tags = self.config['tags']
+        self.dimensions = json.loads(self.config['dimensions'])
         self.using_0_8 = False
 
         if self.influxdb_version in ['0.8', '.8']:
@@ -154,6 +156,7 @@ class InfluxdbHandler(Handler):
             'timeout': 5,
             'influxdb_version': '0.9',
             'tags': '',
+            'dimensions': '',
         })
 
         return config
@@ -213,16 +216,34 @@ class InfluxdbHandler(Handler):
                     if isinstance(value, integer_types):
                         value = float(value)
 
-                    #self.log.debug("tags: %s", self.tags)
-                    tags = json.loads(self.tags)
-                    metrics.append({
-                        "measurement": metric.getCollectorPath(),
-                        "time": metric.timestamp,
-                        "fields": {metric.getMetricPath(): value},
-                        "tags": tags
-                    }),
+                    metric_value = metric.getMetricPath()
+                    metric_value = metric_value.split(".")
+                    metric_measurement = metric.getCollectorPath()
 
-        #self.log.debug(metrics)
+                    if self.tags:
+                        if len(metric_value) > 1:
+                            auto_tags = dict(zip(self.dimensions[metric_measurement], metric_value))
+                        else:
+                            auto_tags = {}
+                            self.log.debug("No need to parse for (%s:%s)", metric_measurement, metric_value)
+
+                        #self.log.debug("tags: %s", self.tags)
+                        tags = json.loads(self.tags)
+                        tags.update(auto_tags)
+                        metrics.append({
+                            "measurement": metric_measurement,
+                            "time": metric.timestamp,
+                            "fields": {str(metric_value[-1]): value},
+                            "tags": tags
+                        }),
+                    else:
+                        metrics.append({
+                            "measurement": metric.getCollectorPath(),
+                            "time": metric.timestamp,
+                            "fields": {metric.getMetricPath(): value},
+                            "tags": {"host": metric.host}
+                        }),
+
         return metrics
 
     def _send(self):
