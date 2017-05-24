@@ -31,8 +31,8 @@ dimensions = '{"cpu": ["cpu_name"], "fluentd": ["port", "source", "destination"]
 ```
 
 * ```host``` - Tag is autodiscovered from Diamond internal from ```hostname_method```
-* ```tags``` - Static tags are appended to other tags
-* ```dimensions``` - This feature will help map columns key's to values exposed in Diamond flat metrics. Any other collector that have only measurment and field will be discovered automatic. Results will be added as key:value to other tags
+* ```tags``` - Static tags are appended to other tags. Format: json with key:value
+* ```dimensions``` - This feature will help map columns key's to values exposed in Diamond flat metrics. Any other collector that have only measurment and field will be discovered automatic. Results will be added as key:value to other tags. Format: json - collectors names with mapping list inside
 
 ## Examples
 
