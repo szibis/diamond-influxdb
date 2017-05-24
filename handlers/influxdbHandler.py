@@ -9,12 +9,12 @@ v1.1 : force influxdb driver with SSL
 v1.2 : added a timer to delay influxdb writing in case of failure
        this whill avoid the 100% cpu loop when influx in not responding
        Sebastien Prune THOMAS - prune@lecentre.net
-v1.3 : Add support for influxdb 9.0 and allow the ability to timeout requests
-
+v1.3 : Add support for influxdb 0.9 and allow the ability to timeout requests
+v1.5 : Add tags and dimensions support and updates for 1.2+ influxdb.
+       Adds retries and fix timeouts with latest python-influxdb
 
 #### Dependencies
  * [influxdb](https://github.com/influxdb/influxdb-python)
-
 
 #### Configuration
 ```
@@ -27,9 +27,11 @@ username = root
 password = root
 database = graphite
 time_precision = s
-timeout = 5.0
-influxdb_version = 0.9
+timeout = 5
+retries = 3
+influxdb_version = 1.2
 tags = '{"region": "us-east-1","env": "production"}'
+dimensions = '{"cpu": ["cpu_name"], "diskspace": ["device_name"], "iostat": ["device"], "network": ["device"], "softirq": ["irq"] }'
 ```
 """
 
@@ -75,9 +77,11 @@ class InfluxdbHandler(Handler):
         self.metric_max_cache = int(self.config['cache_size'])
         self.batch_count = 0
         self.time_precision = self.config['time_precision']
-        self.timeout = self.config['timeout']
+        self.timeout = int(self.config['timeout'])
+        self.retries = int(self.config['retries'])
         self.influxdb_version = self.config['influxdb_version']
         self.tags = self.config['tags']
+        self.dimensions = json.loads(self.config['dimensions'])
         self.using_0_8 = False
 
         if self.influxdb_version in ['0.8', '.8']:
@@ -129,7 +133,7 @@ class InfluxdbHandler(Handler):
                               'microsecond (u)',
             'timeout': 'Number of seconds to wait before timing out a hanging'
                        ' request to influxdb',
-            'influxdb_version': 'InfluxDB API version, default 0.9',
+            'influxdb_version': 'InfluxDB API version, default 1.2',
             'tags': 'static tags added to each metrics'
         })
 
@@ -152,8 +156,10 @@ class InfluxdbHandler(Handler):
             'cache_size': 20000,
             'time_precision': 's',
             'timeout': 5,
-            'influxdb_version': '0.9',
+            'retries': 3,
+            'influxdb_version': '1.2',
             'tags': '',
+            'dimensions': '',
         })
 
         return config
@@ -213,16 +219,35 @@ class InfluxdbHandler(Handler):
                     if isinstance(value, integer_types):
                         value = float(value)
 
-                    #self.log.debug("tags: %s", self.tags)
-                    tags = json.loads(self.tags)
-                    metrics.append({
-                        "measurement": metric.getCollectorPath(),
-                        "time": metric.timestamp,
-                        "fields": {metric.getMetricPath(): value},
-                        "tags": tags
-                    }),
+                    metric_value = metric.getMetricPath()
+                    metric_value = metric_value.split(".")
+                    metric_measurement = metric.getCollectorPath()
 
-        #self.log.debug(metrics)
+                    if self.tags or self.dimensions:
+                        if len(metric_value) > 1:
+                            auto_tags = dict(zip(self.dimensions[metric_measurement], metric_value))
+                        else:
+                            auto_tags = {}
+
+                        tags = json.loads(self.tags)
+                        # add host from diamond
+                        tags.update(json.loads("{\"host\": \"%s\"}" % (metric.host)))
+                        # add auto discovered tags with dimensions
+                        tags.update(auto_tags)
+                        metrics.append({
+                            "measurement": metric_measurement,
+                            "time": metric.timestamp,
+                            "fields": {str(metric_value[-1]): value},
+                            "tags": tags
+                        }),
+                    else:
+                        metrics.append({
+                            "measurement": metric_measurement,
+                            "time": metric.timestamp,
+                            "fields": {metric_value: value},
+                            "tags": {"host": metric.host}
+                        }),
+
         return metrics
 
     def _send(self):
@@ -268,9 +293,11 @@ class InfluxdbHandler(Handler):
 
         try:
             # Open Connection
-            self.influx = self.client(self.hostname, self.port,
-                                      self.username, self.password,
-                                      self.database, self.ssl
+            self.influx = self.client(host=self.hostname, port=self.port,
+                                      username=self.username, password=self.password,
+                                      database=self.database, ssl=self.ssl,
+                                      verify_ssl=False, timeout=self.timeout,
+                                      retries=self.retries
                                       )
             # Log
             self.log.info("InfluxdbHandler: Established connection to "
