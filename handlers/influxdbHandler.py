@@ -229,9 +229,8 @@ class InfluxdbHandler(Handler):
                             auto_tags = {}
 
                         tags = json.loads(self.tags)
-                        metric_host = '{"host": metric.host}'
                         # add host from diamond
-                        #tags.update(metric_host)
+                        tags.update(json.loads("{\"host\": \"%s\"}" % (metric.host)))
                         # add auto discovered tags with dimensions
                         tags.update(auto_tags)
                         metrics.append({
