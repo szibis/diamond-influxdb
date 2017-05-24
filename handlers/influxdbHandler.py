@@ -156,6 +156,7 @@ class InfluxdbHandler(Handler):
             'cache_size': 20000,
             'time_precision': 's',
             'timeout': 5,
+            'retries': 3,
             'influxdb_version': '1.2',
             'tags': '',
             'dimensions': '',
