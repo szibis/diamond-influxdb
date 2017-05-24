@@ -1,6 +1,9 @@
 # diamond-influxdb
 This is extended version of InfluxDB Handler for Diamond (https://github.com/python-diamond)
 
+All this features helping as to move from graphite to influx as metrics store on production.
+We can now move all traffic to graphite and influxdb in parallel without any templating/proxy between.
+
 Based on influxdb handler version from https://github.com/python-diamond/Diamond/pull/504
 
 * Support for latest InfluxDB OSS/Enterprise 1.2.x+
