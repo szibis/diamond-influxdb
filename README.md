@@ -30,3 +30,16 @@ dimensions = '{"cpu": ["cpu_name"], "fluentd": ["port", "source", "destination"]
 * ```host``` - Tag is autodiscovered from Diamond internal from ```hostname_method```
 * ```tags``` - Static tags are appended to other tags
 * ```dimensions``` - This feature will help map columns key's to values exposed in Diamond flat metrics. Any other collector that have only measurment and field will be discovered automatic. Results will be added as key:value to other tags
+
+## Examples
+
+```
+tcp,env=production,host=ip-10-100-100-1,region=us-east-1 TCPDSACKRecv=0.4666666666666667 1495656995
+memory,env=production,host=ip-10-100-100-1,region=us-east-1 Inactive=759873536.0 1495656954
+files,env=production,host=ip-10-100-100-1,region=us-east-1 assigned=2144.0 1495656981
+network,device=eth0,env=production,host=ip-10-100-100-1,region=us-east-1 tx_compressed=0.0 1495656981
+```
+* all static tags added to each metric
+* host added automatic
+* tcp, memory and file have no additional tags
+* network collector have additional column which is named in config as ```device``` and it is mapped to ```device:eth0```
