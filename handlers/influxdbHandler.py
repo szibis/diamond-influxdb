@@ -50,7 +50,7 @@ except ImportError:
     InfluxDB08Client = None
 
 
-class InfluxdbHandler(Handler):v1.5 : Add tags and dimensions support
+class InfluxdbHandler(Handler):
     """
     Sending data to Influxdb using batched format
     """
