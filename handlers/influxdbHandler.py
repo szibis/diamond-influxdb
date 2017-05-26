@@ -31,7 +31,10 @@ timeout = 5
 retries = 3
 influxdb_version = 1.2
 tags = '{"region": "us-east-1","env": "production"}'
-dimensions = '{"cpu": ["cpu_name"], "diskspace": ["device_name"], "iostat": ["device"], "network": ["device"], "softirq": ["irq"] }'
+dimensions = '{"cpu": ["cpu_name"], "diskspace": ["device_name"], "iostat": ["device"], "network": ["device"], "softirq": ["irq"], "test": ['type', '__remove__'] }'
+
+* if you use __remove__ in dimension then this column tag mapping will be removed
+
 ```
 """
 
@@ -228,6 +231,10 @@ class InfluxdbHandler(Handler):
                             auto_tags = dict(zip(self.dimensions[metric_measurement], metric_value))
                         else:
                             auto_tags = {}
+
+                        for element in auto_tags.keys():
+                            if '__remove__' in element:
+                               auto_tags.pop(element)
 
                         tags = json.loads(self.tags)
                         # add host from diamond

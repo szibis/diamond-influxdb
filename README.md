@@ -27,12 +27,14 @@ timeout = 5
 retries = 3
 influxdb_version = 1.2
 tags = '{"env": "production", "region": "us-east-1"}'
-dimensions = '{"cpu": ["cpu_name"], "fluentd": ["port", "source", "destination"], "diskspace": ["device_name"], "iostat": ["device"], "network": ["device"], "softirq": ["irq"]}'
+dimensions = '{"cpu": ["cpu_name"], "fluentd": ["port", "source", "destination"], "diskspace": ["device_name"], "iostat": ["device"], "network": ["device"], "softirq": ["irq"], "test": ['type', '__remove__']}'
 ```
 
 * ```host``` - Tag is autodiscovered from Diamond internal from ```hostname_method```
 * ```tags``` - Static tags are appended to other tags. Format: json with key:value
 * ```dimensions``` - This feature will help map columns key's to values exposed in Diamond flat metrics. Any other collector that have only measurment and field will be discovered automatic. Results will be added as key:value to other tags. Format: json - collectors names with mapping list inside
+
+If you like to remove column mapping (effective tag remove) from particular dimension mapping just use __remove__ in mapping list on this column and will not be added as tag.
 
 ## Examples
 
