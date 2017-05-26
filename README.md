@@ -10,6 +10,7 @@ Based on influxdb handler version from https://github.com/python-diamond/Diamond
 * Works on latest python-influxdb 4.x
 * Add static tags like prefix in Diamond but as key:value format used in InfluxDB
 * Autodiscovery and dimensionalized tags with some static mapping help from config
+* Remove unwanted columns in dimensions mapping before they tagged
 
 ## Configuration
 
