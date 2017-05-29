@@ -27,8 +27,9 @@ username = root
 password = root
 database = graphite
 time_precision = s
-timeout = 5
-retries = 3
+timeout = 5 #timeout in influx client
+retries = 3 #number of retries in influx client
+reconnct = 5 #reconnect after 5 successful sends
 influxdb_version = 1.2
 tags = '{"region": "us-east-1","env": "production"}'
 dimensions = '{"cpu": ["cpu_name"], "diskspace": ["device_name"], "iostat": ["device"], "network": ["device"], "softirq": ["irq"], "test": ['type', '__remove__'] }'
@@ -84,6 +85,7 @@ class InfluxdbHandler(Handler):
         self.retries = int(self.config['retries'])
         self.influxdb_version = self.config['influxdb_version']
         self.tags = self.config['tags']
+        self.reconnect = int(self.config['reconnect'])
         self.dimensions = json.loads(self.config['dimensions'])
         self.using_0_8 = False
 
@@ -111,6 +113,9 @@ class InfluxdbHandler(Handler):
         self.influx = None
         self.batch_timestamp = time.time()
         self.time_multiplier = 1
+
+        # Set send_count for reconnect
+        self.send_count = 0
 
         # Connect
         self._connect()
@@ -160,6 +165,7 @@ class InfluxdbHandler(Handler):
             'time_precision': 's',
             'timeout': 5,
             'retries': 3,
+            'reconnect': 0,
             'influxdb_version': '1.2',
             'tags': '',
             'dimensions': '',
@@ -264,11 +270,11 @@ class InfluxdbHandler(Handler):
         # Check to see if we have a valid socket. If not, try to connect.
         try:
             if self.influx is None:
-                self.log.debug("InfluxdbHandler: Socket is not connected. "
+                self.log.info("InfluxdbHandler: Socket is not connected. "
                                "Reconnecting.")
                 self._connect()
             if self.influx is None:
-                self.log.debug("InfluxdbHandler: Reconnect failed.")
+                self.log.info("InfluxdbHandler: Reconnect failed.")
             else:
                 # Build metrics.
                 metrics = self._format_metrics()
@@ -278,6 +284,13 @@ class InfluxdbHandler(Handler):
                                len(metrics))
                 self.influx.write_points(metrics,
                                          time_precision=self.time_precision)
+                if self.reconnect != 0:
+                  self.send_count += 1
+                  if self.send_count == self.reconnect:
+                    self._close()
+                    self.send_count = 0
+                else:
+                  self.send_count = 0
 
                 # empty batch buffer
                 self.batch = {}
