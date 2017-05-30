@@ -232,21 +232,30 @@ class InfluxdbHandler(Handler):
                     metric_value = metric_value.split(".")
                     metric_measurement = metric.getCollectorPath()
 
+                    tags = json.loads(self.tags)
+                    auto_tags = {}
+
                     if self.tags or self.dimensions:
+                      try:
                         if len(metric_value) > 1:
                             auto_tags = dict(zip(self.dimensions[metric_measurement], metric_value))
                         else:
                             auto_tags = {}
+                        # add auto discovered tags with dimensions
+                        tags.update(auto_tags)
 
-                        for element in auto_tags.keys():
+                      except Exception:
+                        self._throttle_error(
+                        "InfluxdbHandler: Error in dimensions zipping for %s ", metric_measurement)
+                        break
+
+                        if len(auto_tags) == 0:
+                          for element in auto_tags.keys():
                             if '__remove__' in element:
                                auto_tags.pop(element)
 
-                        tags = json.loads(self.tags)
                         # add host from diamond
                         tags.update(json.loads("{\"host\": \"%s\"}" % (metric.host)))
-                        # add auto discovered tags with dimensions
-                        tags.update(auto_tags)
                         metrics.append({
                             "measurement": metric_measurement,
                             "time": metric.timestamp,
