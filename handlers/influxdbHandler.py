@@ -12,6 +12,8 @@ v1.2 : added a timer to delay influxdb writing in case of failure
 v1.3 : Add support for influxdb 0.9 and allow the ability to timeout requests
 v1.5 : Add tags and dimensions support and updates for 1.2+ influxdb.
        Adds retries and fix timeouts with latest python-influxdb
+v1.6: Add blacklisted fields support and prefix add.
+      Adds more complex dimensions support
 
 #### Dependencies
  * [influxdb](https://github.com/influxdb/influxdb-python)
@@ -29,12 +31,17 @@ database = graphite
 time_precision = s
 timeout = 5 #timeout in influx client
 retries = 3 #number of retries in influx client
-reconnct = 5 #reconnect after 5 successful sends
+reconnct_interval = 5 #reconnect after 5 successful sends
 influxdb_version = 1.2
+blacklisted = '["time"]'
+blacklisted_prefix = '_'
 tags = '{"region": "us-east-1","env": "production"}'
-dimensions = '{"cpu": ["cpu_name"], "diskspace": ["device_name"], "iostat": ["device"], "network": ["device"], "softirq": ["irq"], "test": ['type', '__remove__'] }'
+dimensions = '{"cpu": ["cpu_name"], "diskspace": ["device_name"], "iostat": ["device"], "network": ["device"], "softirq": ["irq"], "test": ['type', '__remove__'], "elasticsearch": { "segments": ["segments", "type"], "cluster_health": ["type"], "indices": ["index", "type"], "thread_pool": ["type"], "jvm": ["type"], "network": ["type"], "disk": ["type"], "process": ["type"], "cache": ["type"], "transport": ["type"]}}'
 
-* if you use __remove__ in dimension then this column tag mapping will be removed
+## blacklisted is list of non allowed field keys in InfluxDB. Example field time.
+## blacklisted_prefix will be added for any blacklisted field. Example output _time=0.33.
+## Second elements in dimension depth like dict with lists in dict key level for more complex dimensions support. Example elasticsearch collector demensions.
+## if you use __remove__ in dimension then this column tag mapping will be removed
 
 ```
 """
@@ -85,8 +92,10 @@ class InfluxdbHandler(Handler):
         self.retries = int(self.config['retries'])
         self.influxdb_version = self.config['influxdb_version']
         self.tags = self.config['tags']
-        self.reconnect = int(self.config['reconnect'])
+        self.reconnect = int(self.config['reconnect_interval'])
         self.dimensions = json.loads(self.config['dimensions'])
+        self.blacklisted = self.config['blacklisted']
+        self.blacklisted_prefix = self.config['blacklisted_prefix']
         self.using_0_8 = False
 
         if self.influxdb_version in ['0.8', '.8']:
@@ -165,10 +174,12 @@ class InfluxdbHandler(Handler):
             'time_precision': 's',
             'timeout': 5,
             'retries': 3,
-            'reconnect': 0,
+            'reconnect_interval': 0,
             'influxdb_version': '1.2',
-            'tags': '',
-            'dimensions': '',
+            'tags': '{}',
+            'dimensions': '{}',
+            'blacklisted': '["time"]',
+            'blacklisted_prefix': '_',
         })
 
         return config
@@ -204,6 +215,19 @@ class InfluxdbHandler(Handler):
                 self.batch_count,
                 (time.time() - self.batch_timestamp))
 
+    def _remove_dimension(self, auto_tags):
+        """
+        Remove dimensions level from parsing
+        """
+        for element in auto_tags.keys():
+          if '__remove__' in element:
+             auto_tags.pop(elementa)
+
+        return auto_tags
+
+    def _new_value(self, metric_measurement, metric_value):
+        return str(metric_measurement + "_" + metric_value)
+
     def _format_metrics(self):
         """
         Build list of metrics formatted for the influxdb client.
@@ -228,38 +252,63 @@ class InfluxdbHandler(Handler):
                     if isinstance(value, integer_types):
                         value = float(value)
 
-                    metric_value = metric.getMetricPath()
-                    metric_value = metric_value.split(".")
-                    metric_measurement = metric.getCollectorPath()
-
                     tags = json.loads(self.tags)
                     auto_tags = {}
 
+                    metric_value = metric.getMetricPath()
+                    metric_value = metric_value.split(".")
+                    metric_measurement = metric.getCollectorPath()
+                    metric_len = len(metric_value)
+
                     if self.tags or self.dimensions:
-                      try:
-                        if len(metric_value) > 1:
-                            auto_tags = dict(zip(self.dimensions[metric_measurement], metric_value))
+                        if metric_len == 1:
+                           auto_tags['collector'] = metric_measurement
+                        elif metric_len > 1:
+                           try:
+                              if self.dimensions[metric_measurement]:
+                                   if type(self.dimensions[metric_measurement]) is list:
+                                      auto_tags = dict(zip(self.dimensions[metric_measurement], metric_value))
+                                      auto_tags['collector'] = metric_measurement
+                                   elif type(self.dimensions[metric_measurement]) is dict:
+                                        tag_collector = self._new_value(metric_measurement, metric_value[0])
+                                        if metric_len == 2:
+                                           auto_tags['collector'] = tag_collector
+                                        elif type(self.dimensions[metric_measurement][metric_value[0]]) is list:
+                                           new_value = metric_value[0]
+                                           tag_collector = self._new_value(metric_measurement, new_value)
+                                           metric_value.pop(0)
+                                           auto_tags = dict(zip(self.dimensions[metric_measurement][new_value], metric_value))
+                                           auto_tags['collector'] = tag_collector
+                                   else:
+                                     self._throttle_error(
+                                     "InfluxdbHandler: No defined dimensions for zipping in measurement %s ", metric_measurement)
+                                     break
+                           except Exception:
+                             self._throttle_error(
+                             "InfluxdbHandler: No defined dimensions for zipping in measurement %s ", metric_measurement)
+                             break
                         else:
-                            auto_tags = {}
+                           auto_tags = {}
                         # add auto discovered tags with dimensions
                         tags.update(auto_tags)
 
-                      except Exception:
-                        self._throttle_error(
-                        "InfluxdbHandler: Error in dimensions zipping for %s ", metric_measurement)
-                        break
-
                         if len(auto_tags) == 0:
-                          for element in auto_tags.keys():
-                            if '__remove__' in element:
-                               auto_tags.pop(element)
+                           auto_tags = self._remove_dimension(auto_tags)
 
                         # add host from diamond
                         tags.update(json.loads("{\"host\": \"%s\"}" % (metric.host)))
+
+                        #self.log.info(self.blacklisted)
+                        if str(metric_value[-1]) in self.blacklisted:
+                           field_key = str(self.blacklisted_prefix) + str(metric_value[-1])
+                        else:
+                           field_key = str(metric_value[-1])
+
+
                         metrics.append({
                             "measurement": metric_measurement,
                             "time": metric.timestamp,
-                            "fields": {str(metric_value[-1]): value},
+                            "fields": {field_key: value},
                             "tags": tags
                         }),
                     else:
@@ -269,7 +318,6 @@ class InfluxdbHandler(Handler):
                             "fields": {metric_value: value},
                             "tags": {"host": metric.host}
                         }),
-
         return metrics
 
     def _send(self):
