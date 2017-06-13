@@ -36,7 +36,7 @@ influxdb_version = 1.2
 blacklisted = '["time"]'
 blacklisted_prefix = '_'
 tags = '{"region": "us-east-1","env": "production"}'
-dimensions = '{"cpu": ["cpu_name"], "diskspace": ["device_name"], "iostat": ["device"], "network": ["device"], "softirq": ["irq"], "test": ['type', '__remove__'], "elasticsearch": { "segments": ["segments", "type"], "cluster_health": ["type"], "indices": ["index", "type"], "thread_pool": ["type"], "jvm": ["type"], "network": ["type"], "disk": ["type"], "process": ["type"], "cache": ["type"], "transport": ["type"]}}'
+dimensions = '{"cpu": ["cpu_name"], "diskspace": ["device_name"], "iostat": ["device"], "network": ["device"], "softirq": ["irq"], "test": ["type", "__remove__"], "elasticsearch": { "segments": ["segments", "type"], "cluster_health": ["type"], "indices": ["index", "type"], "thread_pool": ["type"], "jvm": ["type"], "network": ["type"], "disk": ["type"], "process": ["type"], "cache": ["type"], "transport": ["type"]}}'
 
 ## blacklisted is list of non allowed field keys in InfluxDB. Example field time.
 ## blacklisted_prefix will be added for any blacklisted field. Example output _time=0.33.
@@ -220,9 +220,8 @@ class InfluxdbHandler(Handler):
         Remove dimensions level from parsing
         """
         for element in auto_tags.keys():
-          if '__remove__' in element:
-             auto_tags.pop(elementa)
-
+          if element == '__remove__':
+             auto_tags.pop(element)
         return auto_tags
 
     def _new_value(self, metric_measurement, metric_value):
@@ -289,11 +288,12 @@ class InfluxdbHandler(Handler):
                              break
                         else:
                            auto_tags = {}
+
+                        if len(auto_tags) > 0:
+                           auto_tags = self._remove_dimension(auto_tags)
+
                         # add auto discovered tags with dimensions
                         tags.update(auto_tags)
-
-                        if len(auto_tags) == 0:
-                           auto_tags = self._remove_dimension(auto_tags)
 
                         # add host from diamond
                         tags.update(json.loads("{\"host\": \"%s\"}" % (metric.host)))
@@ -303,7 +303,6 @@ class InfluxdbHandler(Handler):
                            field_key = str(self.blacklisted_prefix) + str(metric_value[-1])
                         else:
                            field_key = str(metric_value[-1])
-
 
                         metrics.append({
                             "measurement": metric_measurement,
