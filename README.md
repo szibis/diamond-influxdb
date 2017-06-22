@@ -1,9 +1,9 @@
 
-[![License](https://img.shields.io/github/license/futuresimple/helm-secrets.svg)](https://github.com/szibis/diamond-influxdb/blob/master/LICENSE)
-[![Current Release](https://img.shields.io/github/release/futuresimple/helm-secrets.svg)](https://github.com/szibis/diamond-influxdb/releases/latest)
+[![License](https://img.shields.io/github/license/szibis/diamond-influxdb.svg)](https://github.com/szibis/diamond-influxdb/blob/master/LICENSE)
+[![Current Release](https://img.shields.io/github/release/szibis/diamond-influxdb.svg)](https://github.com/szibis/diamond-influxdb/releases/latest)
 [![Production Ready](https://img.shields.io/badge/production-ready-green.svg)](https://github.com/szibis/diamond-influxdb/releases/latest)
-[![GitHub issues](https://img.shields.io/github/issues/futuresimple/helm-secrets.svg)](https://github.com/szibis/diamond-influxdb/issues)
-[![GitHub pull requests](https://img.shields.io/github/issues-pr/futuresimple/helm-secrets.svg?style=flat-square)](https://github.com/szibis/diamond-influxdb/pulls)
+[![GitHub issues](https://img.shields.io/github/issues/szibis/diamond-influxdb.svg)](https://github.com/szibis/diamond-influxdb/issues)
+[![GitHub pull requests](https://img.shields.io/github/issues-pr/szibis/diamond-influxdb.svg?style=flat-square)](https://github.com/szibis/diamond-influxdb/pulls)
 
 # diamond-influxdb
 This is extended version of InfluxDB Handler for Diamond (https://github.com/python-diamond)
