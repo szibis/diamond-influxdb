@@ -35,6 +35,7 @@ reconnct_interval = 5 #reconnect after 5 successful sends
 influxdb_version = 1.2
 blacklisted = '["time"]'
 blacklisted_prefix = '_'
+merge_delimiter = ':'
 tags = '{"region": "us-east-1","env": "production"}'
 dimensions = '{"cpu": ["cpu_name"], "diskspace": ["device_name"], "iostat": ["device"], "network": ["device"], "softirq": ["irq"], "test": ["type", "__remove__"], "elasticsearch": { "segments": ["segments", "type"], "cluster_health": ["type"], "indices": ["index", "type"], "thread_pool": ["type"], "jvm": ["type"], "network": ["type"], "disk": ["type"], "process": ["type"], "cache": ["type"], "transport": ["type"]}}'
 
@@ -94,6 +95,7 @@ class InfluxdbHandler(Handler):
         self.tags = self.config['tags']
         self.reconnect = int(self.config['reconnect_interval'])
         self.dimensions = json.loads(self.config['dimensions'])
+        self.merge_delimiter = self.config['merge_delimiter']
         self.blacklisted = self.config['blacklisted']
         self.blacklisted_prefix = self.config['blacklisted_prefix']
         self.using_0_8 = False
@@ -178,6 +180,7 @@ class InfluxdbHandler(Handler):
             'influxdb_version': '1.2',
             'tags': '{}',
             'dimensions': '{}',
+            'merge_delimiter': ':',
             'blacklisted': '["time"]',
             'blacklisted_prefix': '_',
         })
@@ -215,17 +218,42 @@ class InfluxdbHandler(Handler):
                 self.batch_count,
                 (time.time() - self.batch_timestamp))
 
-    def _remove_dimension(self, auto_tags):
+    def _mangle_dimensions(self, auto_tags):
         """
         Remove dimensions level from parsing
+        or
+        Merge tag value with next value with key name from next col
         """
-        for element in auto_tags.keys():
-          if element == '__remove__':
-             auto_tags.pop(element)
+        merged_dict = {}
+        merge_list = []
+        merge_next = 0
+        merged_key = ""
+        if '__merge__' in auto_tags or '__remove__' in auto_tags:
+          for key, value in auto_tags.copy().iteritems():
+            if key == '__remove__':
+               auto_tags.pop(key)
+            elif '__merge__' in key:
+               merged_key = key.replace("__merge__","")
+               merge_list.append(value)
+               merge_next += 1
+               auto_tags[key] = []
+               auto_tags.pop(key)
+            elif '__empty__' in key:
+               merge_list.append(value)
+               merge_next += 1
+               auto_tags.pop(key)
+            else:
+               pass
+          if merge_next > 0:
+             auto_tags[merged_key] = str(self.merge_delimiter.join(map(str, merge_list[::-1])))
         return auto_tags
 
     def _new_value(self, metric_measurement, metric_value):
+        """
+        New collector name
+        """
         return str(metric_measurement + "_" + metric_value)
+
 
     def _format_metrics(self):
         """
@@ -263,11 +291,20 @@ class InfluxdbHandler(Handler):
                         if metric_len == 1:
                            auto_tags['collector'] = metric_measurement
                         elif metric_len > 1:
-                           try:
+                           #try:
                               if self.dimensions[metric_measurement]:
                                    if type(self.dimensions[metric_measurement]) is list:
-                                      auto_tags = dict(zip(self.dimensions[metric_measurement], metric_value))
-                                      auto_tags['collector'] = metric_measurement
+                                      if len(self.dimensions[metric_measurement]) <= metric_len:
+                                        add_elements = (metric_len) - len(self.dimensions[metric_measurement])
+                                        if add_elements > 0:
+                                          for element in range(0, add_elements):
+                                              empty = "__empty__" + str(element)
+                                              self.dimensions[metric_measurement].append(empty)
+                                        auto_tags = dict(zip(self.dimensions[metric_measurement], metric_value[:-1]))
+                                        auto_tags['collector'] = metric_measurement
+                                      else:
+                                        auto_tags = dict(zip(self.dimensions[metric_measurement], metric_value))
+                                        auto_tags['collector'] = metric_measurement
                                    elif type(self.dimensions[metric_measurement]) is dict:
                                         tag_collector = self._new_value(metric_measurement, metric_value[0])
                                         if metric_len == 2:
@@ -282,15 +319,19 @@ class InfluxdbHandler(Handler):
                                      self._throttle_error(
                                      "InfluxdbHandler: No defined dimensions for zipping in measurement %s ", metric_measurement)
                                      break
-                           except Exception:
-                             self._throttle_error(
-                             "InfluxdbHandler: No defined dimensions for zipping in measurement %s ", metric_measurement)
-                             break
+                           #except Exception:
+                           #  self._throttle_error(
+                           #  "InfluxdbHandler: No defined dimensions for zipping in measurement %s ", metric_measurement)
+                           #  break
                         else:
                            auto_tags = {}
 
                         if len(auto_tags) > 0:
-                           auto_tags = self._remove_dimension(auto_tags)
+                           # remove all columns with __remove__
+                           # or
+                           # concatenate using defined delimiter next column
+                           # after __merge__ with name from next column
+                           auto_tags = self._mangle_dimensions(auto_tags)
 
                         # add auto discovered tags with dimensions
                         tags.update(auto_tags)
