@@ -48,7 +48,7 @@ If you like to merge everyting after defined column to one tag with defined deli
 
 By default we adding ```collector``` tag with name of collector or with ```<collector_name>_<depth_one_name>```. Example: ```collector=elasticsearch_indices```
 
-## Examples output
+## Example output
 
 ```
 iostat,collector=iostat,device=xvda,env=production,host=ip-172-17-115-176,region=us-east-1 writes_merged=8.0 1497340065
