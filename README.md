@@ -18,11 +18,11 @@ Based on influxdb handler version from https://github.com/python-diamond/Diamond
 [[InfluxdbHandler]]
 hostname = localhost
 port = 8086 #8084 for HTTPS
-batch_size = 100 # default to 1
-cache_size = 1000 # default to 20000
-username = root
-password = root
-database = graphite
+batch_size = 500 # default to 1
+cache_size = 10000 # default to 20000
+username = diamond-write
+password = blablapassword
+database = diamond
 time_precision = s
 timeout = 5 #timeout in influx client
 retries = 3 #number of retries in influx client
@@ -30,8 +30,9 @@ reconnct_interval = 5 #reconnect after 5 successful sends
 influxdb_version = 1.2
 blacklisted = '["time"]'
 blacklisted_prefix = '_'
-tags = '{"region": "us-east-1","env": "production"}'
-dimensions = '{"cpu": ["cpu_name"], "diskspace": ["device_name"], "iostat": ["device"], "network": ["device"], "softirq": ["irq"], "test": ['type', '__remove__'], "elasticsearch": { "segments": ["segments", "type"], "cluster_health": ["type"], "indices": ["index", "type"], "thread_pool": ["type"], "jvm": ["type"], "network": ["type"], "disk": ["type"], "process": ["type"], "cache": ["type"], "transport": ["type"]}}'
+merge_delimiter = ':'
+tags = '{"env": "production", "region": "us-east-1"}'
+dimensions = '{"cpu": ["cpu_name"], "diskspace": ["device_name"], "iostat": ["device"], "network": ["device"], "softirq": ["irq"], "elasticsearch": { "segments": ["segments", "type"], "cluster_health": ["type"], "indices": ["index", "type"], "thread_pool": ["type"], "jvm": ["type"], "network": ["type"], "disk": ["type"], "process": ["type"], "cache": ["type"], "transport": ["type"]}, "foo": ["type", "__remove__"], "bar": ["type", "__merge_myname"]}'
 ```
 
 * ```host``` - Tag is autodiscovered from Diamond internal from ```hostname_method```
@@ -40,12 +41,14 @@ dimensions = '{"cpu": ["cpu_name"], "diskspace": ["device_name"], "iostat": ["de
 * ```dimensions``` - This feature will help map columns key's to values exposed in Diamond flat metrics. Any other collector that have only measurment and field will be discovered automatic. Results will be added as key:value to other tags. Second elements in dimension depth like dict with lists in dict key level for more complex dimensions support. Example elasticsearch collector demensions. Format: json - collectors names with mapping list inside
 * ```blacklisted``` - blacklisted is list of non allowed field keys in InfluxDB. Example field time.
 * ```blacklisted_prefix``` - blacklisted_prefix will be added for any blacklisted field. Example output _time=0.33
+* ```merge_delimiter``` This is used for merging values in columns to create merged tag value with defined delimiter
 
 If you like to remove column mapping (effective tag remove) from particular dimension mapping just use ```__remove__``` in mapping list on this column and will not be added as tag.
+If you like to merge everyting after defined column to one tag with defined delimiter you can use ```__merge__<column_name>``` for example: __merge__paritions and all alements after this excluding field will be merged to one tag value with ```:``` as delimiter.
 
 By default we adding ```collector``` tag with name of collector or with ```<collector_name>_<depth_one_name>```. Example: ```collector=elasticsearch_indices```
 
-## Examples
+## Examples output
 
 ```
 iostat,collector=iostat,device=xvda,env=production,host=ip-172-17-115-176,region=us-east-1 writes_merged=8.0 1497340065
@@ -59,4 +62,4 @@ memory,collector=memory,env=production,host=ip-172-17-115-176,region=us-east-1 C
 * all static tags added to each metric
 * host added automatic
 * tcp, memory and file have no additional tags
-* network collector have additional column which is named in config as ```device``` and it is mapped to ```device:eth0```
+* network collector have additional column which is named in config as ```device``` and it is mapped to ```device=eth0```
