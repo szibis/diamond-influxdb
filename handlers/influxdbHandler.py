@@ -14,6 +14,8 @@ v1.5 : Add tags and dimensions support and updates for 1.2+ influxdb.
        Adds retries and fix timeouts with latest python-influxdb
 v1.6: Add blacklisted fields support and prefix add.
       Adds more complex dimensions support
+v1.7: Add __empty__ feature for merging values to one key. Some Exception
+      handling when loading dimensions and tags config jsons
 
 #### Dependencies
  * [influxdb](https://github.com/influxdb/influxdb-python)
@@ -49,6 +51,7 @@ dimensions = '{"cpu": ["cpu_name"], "diskspace": ["device_name"], "iostat": ["de
 
 from six import integer_types
 import time
+import sys
 from Handler import Handler
 import json
 
@@ -94,7 +97,11 @@ class InfluxdbHandler(Handler):
         self.influxdb_version = self.config['influxdb_version']
         self.tags = self.config['tags']
         self.reconnect = int(self.config['reconnect_interval'])
-        self.dimensions = json.loads(self.config['dimensions'])
+        try:
+          self.dimensions = json.loads(self.config['dimensions'])
+        except Exception:
+          self._throttle_error("InfluxDBHandler ERROR - Invalid dimensions JSON in config")
+          sys.exit(1)
         self.merge_delimiter = self.config['merge_delimiter']
         self.blacklisted = self.config['blacklisted']
         self.blacklisted_prefix = self.config['blacklisted_prefix']
@@ -246,6 +253,9 @@ class InfluxdbHandler(Handler):
                pass
           if merge_next > 0:
              auto_tags[merged_key] = str(self.merge_delimiter.join(map(str, merge_list[::-1])))
+        for k in auto_tags.keys():
+          if k.startswith('__empty__'):
+            auto_tags.pop(k)
         return auto_tags
 
     def _new_value(self, metric_measurement, metric_value):
@@ -254,6 +264,13 @@ class InfluxdbHandler(Handler):
         """
         return str(metric_measurement + "_" + metric_value)
 
+    def _add_empty(self, dimensions, metric_len):
+        add_elements = (metric_len) - len(dimensions)
+        if add_elements > 0:
+          for element in range(0, add_elements):
+              empty = "__empty__" + str(element)
+              dimensions.append(empty)
+        return dimensions
 
     def _format_metrics(self):
         """
@@ -279,7 +296,12 @@ class InfluxdbHandler(Handler):
                     if isinstance(value, integer_types):
                         value = float(value)
 
-                    tags = json.loads(self.tags)
+                    try:
+                      tags = json.loads(self.tags)
+                    except Exception:
+                      self._throttle_error("InfluxDBHandler ERROR - Invalid tags JSON in config")
+                      sys.exit(1)
+
                     auto_tags = {}
 
                     metric_value = metric.getMetricPath()
@@ -295,12 +317,8 @@ class InfluxdbHandler(Handler):
                               if self.dimensions[metric_measurement]:
                                    if type(self.dimensions[metric_measurement]) is list:
                                       if len(self.dimensions[metric_measurement]) <= metric_len:
-                                        add_elements = (metric_len) - len(self.dimensions[metric_measurement])
-                                        if add_elements > 0:
-                                          for element in range(0, add_elements):
-                                              empty = "__empty__" + str(element)
-                                              self.dimensions[metric_measurement].append(empty)
-                                        auto_tags = dict(zip(self.dimensions[metric_measurement], metric_value[:-1]))
+                                        dimensions = self._add_empty(self.dimensions[metric_measurement], metric_len)
+                                        auto_tags = dict(zip(dimensions, metric_value[:-1]))
                                         auto_tags['collector'] = metric_measurement
                                       else:
                                         auto_tags = dict(zip(self.dimensions[metric_measurement], metric_value))
@@ -313,7 +331,11 @@ class InfluxdbHandler(Handler):
                                            new_value = metric_value[0]
                                            tag_collector = self._new_value(metric_measurement, new_value)
                                            metric_value.pop(0)
-                                           auto_tags = dict(zip(self.dimensions[metric_measurement][new_value], metric_value))
+                                           if len(self.dimensions[metric_measurement][metric_value[0]]) <= metric_len:
+                                              dimensions = self._add_empty(self.dimensions[metric_measurement][new_value], metric_len)
+                                              auto_tags = dict(zip(dimensions, metric_value[:-1]))
+                                           else:
+                                             auto_tags = dict(zip(self.dimensions[metric_measurement][new_value], metric_value))
                                            auto_tags['collector'] = tag_collector
                                    else:
                                      self._throttle_error(
