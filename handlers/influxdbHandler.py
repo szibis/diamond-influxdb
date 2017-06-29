@@ -16,6 +16,7 @@ v1.6: Add blacklisted fields support and prefix add.
       Adds more complex dimensions support
 v1.7: Add __empty__ feature for merging values to one key. Some Exception
       handling when loading dimensions and tags config jsons
+      Fix second level metrics parsing
 
 #### Dependencies
  * [influxdb](https://github.com/influxdb/influxdb-python)
@@ -325,18 +326,23 @@ class InfluxdbHandler(Handler):
                                         auto_tags['collector'] = metric_measurement
                                    elif type(self.dimensions[metric_measurement]) is dict:
                                         tag_collector = self._new_value(metric_measurement, metric_value[0])
-                                        if metric_len == 2:
+                                        dict_metric_len = metric_len-1
+                                        if dict_metric_len <= 2 and dict_metric_len != 0:
                                            auto_tags['collector'] = tag_collector
                                         elif type(self.dimensions[metric_measurement][metric_value[0]]) is list:
                                            new_value = metric_value[0]
                                            tag_collector = self._new_value(metric_measurement, new_value)
                                            metric_value.pop(0)
-                                           if len(self.dimensions[metric_measurement][metric_value[0]]) <= metric_len:
+                                           if len(self.dimensions[metric_measurement][new_value]) <= dict_metric_len:
                                               dimensions = self._add_empty(self.dimensions[metric_measurement][new_value], metric_len)
                                               auto_tags = dict(zip(dimensions, metric_value[:-1]))
                                            else:
                                              auto_tags = dict(zip(self.dimensions[metric_measurement][new_value], metric_value))
-                                           auto_tags['collector'] = tag_collector
+                                             auto_tags['collector'] = tag_collector
+                                        else:
+                                           self._throttle_error(
+                                           "InfluxdbHandler: No defined dimensions for zipping in measurement %s", metric_measurement)
+                                           pass
                                    else:
                                      self._throttle_error(
                                      "InfluxdbHandler: No defined dimensions for zipping in measurement %s ", metric_measurement)
