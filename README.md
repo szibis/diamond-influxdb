@@ -66,7 +66,13 @@ tcp,collector=tcp,env=production,host=ip-172-17-115-176,region=us-east-1 TCPFACK
 elasticsearch,collector=elasticsearch_indices,env=production,host=ip-172-17-115-176,index=test_index,region=us-east-1,type=get exists_time_in_millis=0.0 1497340078
 memory,collector=memory,env=production,host=ip-172-17-115-176,region=us-east-1 CmaTotal=0.0 1497340068
 ```
-* all static tags added to each metric
-* host added automatic
-* tcp, memory and file have no additional tags
-* network collector have additional column which is named in config as ```device``` and it is mapped to ```device=eth0```
+* All static tags added to each metric
+* Host from diamond added automatic
+* tcp, memory and file have no additional tags in this example because they have no more dimensions
+* network collector have additional column which is named in config dimensions as ```device``` and it is mapped to ```device=eth0```in this example.
+
+## More examples of specific features
+
+```
+
+```
